@@ -30,7 +30,7 @@ def embedding_mapping(ex, embed_dict):
 	for i in range(len(ex)):
 		min_dist = np.inf
 		for j in range(256):
-			dist = tf.norm(ex[i] - embed_dict[j])
+			dist = tf.math.reduce_euclidean_norm(ex[i] - embed_dict[j])
 			if min_dist < dist:
 				min_dist = dist
 				temp = j
@@ -126,7 +126,7 @@ def gradient_attack(count, mal, embed_dict, new, new1, model):
 				for j in range(256):
 					m = embed_dict[j]
 					s = n*(m - z)
-					d = tf.norm(m - (z + s*n))
+					d = tf.math.reduce_euclidean_norm(m - (z + s*n))
 					if d < d_min:
 						d_min = d
 						new_byte = j
