@@ -219,36 +219,4 @@ def run_slack():
 	print("Original Percentage of malware detected:",total0/len(X_predicts)*100)
 	print("Afer attack the percentage of malware detected:",total1/len(X_predicts)*100)
 
-
-def test():
-	files = os.listdir('../data/all_file')
-	random.shuffle(files)
-	malwares = []
-	count = 0
-	for f in files:
-		if 'mal' in f:
-			malwares.append(f)
-			count += 1
-			if count > 399:
-				break
-	for f in malwares:
-		raw_add(f)
-
-def test1():
-	model = tf.keras.models.load_model("../data/model/malconv_final.h5") #loading the trained model
-	#model.summary()
-	model.trainable = False
-	with open('../data/adver_mals_1/mal_597_slack', 'rb') as f:
-		malcontent = f.read()
-	maxlen = model.input_shape[1]
-	X = np.ones((maxlen), dtype=np.uint16)*256
-	byte = np.frombuffer(malcontent[:maxlen], dtype=np.uint8)
-	X[:len(byte)] = byte
-	X = np.asarray([X], dtype=np.uint16)
-	length = len(malcontent)
-
-	original_predict = model.predict(X)
-	print(original_predict)
-
-
 run_slack()
