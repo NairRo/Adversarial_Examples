@@ -14,13 +14,11 @@ parser.add_argument('-r','--rho',type=str,metavar='',help='value of rho for FGM 
 parser.add_argument('-c','--count',type=str,metavar='',help='maximum iterations for gradient attack')
 args = parser.parse_args()
 
-random.seed(50)
-
-def Mj(num,new_model):
-	temp = np.ones((new_model.input_shape[1]), dtype=np.uint16)*256 # creating an array of model input shape with all bytes as 256
-	temp[0] = num #changing first byte to the desired value
+def Mj(num,new_model): # function to get the embedded value of a byte
+	temp = np.ones((new_model.input_shape[1]), dtype=np.uint16)*256
+	temp[0] = num
 	temp = tf.convert_to_tensor([temp])
-	return new_model.predict(temp)[0][0] #returning the embedded mapping of the first byte
+	return new_model.predict(temp)[0][0]
 
 def grad_attack(embed_dict, rho, e, length, signed_grad):
 	eu = []
@@ -42,7 +40,7 @@ def embedding_mapping(ex, embed_dict):
 	return x
 
 
-def Fgm(rho, mal, embed_dict, new, new1, model): # executing FGM Append attack on the given malware
+def Fgm(rho, mal, embed_dict, new, new1, model):
 	with open('../data/all_file/'+mal, 'rb') as f:
 		malcontent = f.read()
 	maxlen = model.input_shape[1]
@@ -87,6 +85,10 @@ def Fgm(rho, mal, embed_dict, new, new1, model): # executing FGM Append attack o
 		for i in range(pad_length):
 			X_[0][length + i] = x[i]
 		print(original_predict,model.predict(X_))
+		if model.predict(X_)< 0.5:
+			X_ = X_.astype('uint8')
+			f = open('../data/adver_mals/'+mal+'_fgm', 'wb')
+			f.write(X_[0][:length+pad_length].tobytes())
 		return original_predict,model.predict(X_)
 	else:
 		return original_predict, original_predict
@@ -146,6 +148,12 @@ def gradient_attack(count, mal, embed_dict, new, new1, model):
 			X_ = tf.convert_to_tensor(X_)
 			pred_X_ = model.predict(X_)
 			if pred_X_ < 0.5 or pred_X_ == model.predict(X):
+				if model.predict(X_)< 0.5:
+					X_ = tf.make_tensor_proto(X_)
+					X_ = tf.make_ndarray(X_)
+					X_ = X_.astype('uint8')
+					f = open('../data/adver_mals/'+mal+'_grad', 'wb')
+					f.write(X_[0][:length+pad_length].tobytes())
 				break
 			X = tf.make_tensor_proto(X_)
 			X = tf.make_ndarray(X)
@@ -167,7 +175,6 @@ def benign_append(mal, ben, model):
 	X = np.asarray([X], dtype=np.uint16)
 
 	original_predict = model.predict(X)
-	print(original_predict)
 	if original_predict[0] < 0.5:
 		return original_predict, original_predict
 	elif length < maxlen:
@@ -177,7 +184,6 @@ def benign_append(mal, ben, model):
 		for j in ben:
 			min_pred = 1
 			with open('../data/all_file/'+j, 'rb') as f:
-				print(j)
 				bencontent = f.read()
 				benign = np.frombuffer(bencontent[:pad_length], dtype=np.uint8)
 			for i in range(pad_length):
@@ -185,7 +191,6 @@ def benign_append(mal, ben, model):
 			temp = model.predict(X)[0]
 			if temp < min_pred:
 				min_pred = temp
-		print(original_predict,[min_pred])
 		return original_predict,[min_pred]
 	else:
 		return original_predict,original_predict
@@ -219,6 +224,7 @@ def run_FGM_append(rho):
 	total0 = 0
 	total1 = 0
 	files = os.listdir('../data/all_file')
+	random.shuffle(files)
 	malwares = []
 	count = 0
 	for f in files:
@@ -227,7 +233,6 @@ def run_FGM_append(rho):
 			count += 1
 		if count > 399: #randomly choosen 400 malwares
 			break
-	random.shuffle(malwares)
 	embed_dict = {}
 	for i in range(257):
 		embed_dict[i] = Mj(i,new) #dictionary that contains embedded mapping for all bytes
@@ -247,7 +252,7 @@ def run_FGM_append(rho):
 	print("Original Percentage of malware detected:",total0/len(X_predicts)*100)
 	print("Afer attack the percentage of malware detected:",total1/len(X_predicts)*100)
 
-def run_grad_append(count):
+def run_grad_append(counter):
 	model = tf.keras.models.load_model("../data/model/malconv_final.h5") #loading the trained model
 	#model.summary()
 	model.trainable = False
@@ -276,21 +281,22 @@ def run_grad_append(count):
 	total0 = 0
 	total1 = 0
 	files = os.listdir('../data/all_file')
+	random.shuffle(files)
 	malwares = []
 	count = 0
 	for f in files:
 		if 'mal' in f:
 			malwares.append(f)
 			count += 1
-		if count > 49: #randomly choosen 100 malwares
+		if count > 49: #randomly choosen 50 malwares
 			break
-	random.shuffle(malwares)
 	embed_dict = {}
 	for i in range(257):
 		embed_dict[i] = Mj(i,new) #dictionary that contains embedded mapping for all bytes
+	o = 1
 	for i in malwares:
-		print('[+]',i)
-		pred0,pred1 = gradient_attack(count,i,embed_dict,new,new1,model)
+		print('[+]',o,i)
+		pred0,pred1 = gradient_attack(counter,i,embed_dict,new,new1,model)
 		X_predicts.append(pred0[0])
 		X_new_predicts.append(pred1[0])
 		if pred0[0] > 0.5:
@@ -300,20 +306,22 @@ def run_grad_append(count):
 				success += 1
 		if pred1[0] > 0.5:
 			total1 += 1
+		o += 1
 	print("Percentage of successful adversarial examples:",success/total_malware*100)
 	print("Original Percentage of malware detected:",total0/len(X_predicts)*100)
 	print("Afer attack the percentage of malware detected:",total1/len(X_predicts)*100)
 
 def run_benign():
-	model = tf.keras.models.load_model("../data/model/malconv_final.h5")
+	model = tf.keras.models.load_model("../data/model/malconv.h5")
 	files = os.listdir('../data/all_file')
+	random.shuffle(files)
 	malwares = []
 	count = 0
 	for f in files:
 		if 'mal' in f:
 			malwares.append(f)
 			count += 1
-		if count > 399: #randomly choosen 100 malwares
+		if count > 399: #randomly choosen 400 malwares
 			break
 	ben = []
 	count = 0
@@ -323,8 +331,6 @@ def run_benign():
 			count += 1
 		if count > 99: #randomly choosen 100 malwares
 			break
-	random.shuffle(malwares)
-	random.shuffle(ben)	
 	X_predicts = []
 	X_new_predicts = []
 	success = 0
@@ -350,10 +356,16 @@ def run_benign():
 
 if __name__ == '__main__':
 	if args.fgm:
-		run_FGM_append(float(args.rho))
+		for i in range(5):
+			random.seed(i)
+			run_FGM_append(float(args.rho))
 	elif args.grad:
-		run_grad_append(int(args.count))
+		for i in range(5):
+			random.seed(i)
+			run_grad_append(int(args.count))
 	elif args.ben:
-		run_benign()
+		for i in range(5):
+			random.seed(i)
+			run_benign()
 	else:
 		print("Invalid arguments. Use -h or --help for help")
